@@ -8,8 +8,15 @@ self.addEventListener('install', function(event) {
 
 const CHUNK_SIZE = 50;
 
+let cachingInProgress = {};
+
 async function cacheFiles(data) {
     const { files, startIndex } = data;
+    if (cachingInProgress[startIndex]) {
+        return;
+    }
+    cachingInProgress[startIndex] = true;
+
     const cache = await caches.open(CACHE_NAME);
     const totalFiles = files.length;
 
@@ -48,6 +55,8 @@ async function cacheFiles(data) {
             nextIndex: endIndex
         });
     });
+
+    delete cachingInProgress[startIndex];
 }
 
 self.addEventListener('message', (event) => {
