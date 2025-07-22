@@ -1386,6 +1386,8 @@ if ('serviceWorker' in navigator) {
           } catch (err) {
             console.error(`${err.name}, ${err.message}`);
           }
+        } else {
+          alert('To prevent the download from being interrupted, please disable screen lock on your device temporarily.');
         }
 
         const cacheButton = document.getElementById('cache-button');
