@@ -1323,13 +1323,23 @@ if ('serviceWorker' in navigator) {
     });
   });
 
+  let allFiles = [];
+
   // Listen for messages from the service worker
   navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data.type === 'CACHE_UPDATE') {
+    if (event.data.type === 'CHUNK_CACHED') {
       updateCacheProgress(event.data.cached, event.data.total);
-    }
-    if (event.data.type === 'CACHE_COMPLETE') {
-      updateCacheProgress(event.data.total, event.data.total);
+      if (event.data.nextIndex < event.data.total) {
+        // Request next chunk
+        navigator.serviceWorker.controller.postMessage({
+          type: 'START_CACHE',
+          files: allFiles,
+          startIndex: event.data.nextIndex
+        });
+      } else {
+        // Caching complete
+        updateCacheProgress(event.data.total, event.data.total);
+      }
     }
   });
 }
@@ -1350,6 +1360,7 @@ async function checkCacheStatus() {
         throw new Error('Failed to fetch file-list.json');
     }
     const fileList = await response.json();
+    allFiles = fileList; // Store for later use
 
     document.getElementById('cache-progress').style.display = 'block';
 
@@ -1360,9 +1371,25 @@ async function checkCacheStatus() {
   }
 }
 
-document.getElementById('cache-button').addEventListener('click', () => {
+document.getElementById('cache-button').addEventListener('click', async () => {
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'START_CACHE' });
+    if (allFiles.length === 0) {
+      try {
+        const response = await fetch('file-list.json');
+        if (!response.ok) throw new Error('Failed to fetch file-list.json');
+        allFiles = await response.json();
+      } catch (error) {
+        console.error("Could not start caching:", error);
+        return;
+      }
+    }
+    
+    // Start caching from the beginning
+    navigator.serviceWorker.controller.postMessage({
+      type: 'START_CACHE',
+      files: allFiles,
+      startIndex: 0
+    });
   }
 });
 
@@ -1370,7 +1397,8 @@ function updateCacheProgress(cachedCount, totalCount) {
   const progressText = document.getElementById('cache-progress-text');
   
   if (totalCount > 0) {
-    progressText.textContent = `Cached ${cachedCount} of ${totalCount} files.`;
+    const percentage = ((cachedCount / totalCount) * 100).toFixed(2);
+    progressText.textContent = `Cached ${cachedCount} of ${totalCount} files (${percentage}%).`;
   }
 }
 

@@ -6,86 +6,56 @@ self.addEventListener('install', function(event) {
   event.waitUntil(self.skipWaiting());
 });
 
-self.addEventListener('message', (event) => {
-  if (event.data.type === 'START_CACHE') {
-    event.waitUntil((async () => {
-      try {
-        const cache = await caches.open(CACHE_NAME);
-        const cachedRequests = await cache.keys();
-        const cachedUrls = new Set(cachedRequests.map(req => req.url));
+const CHUNK_SIZE = 50;
 
-        const response = await fetch('file-list.json');
-        const allFiles = await response.json();
-        const totalFiles = allFiles.length;
+async function cacheFiles(data) {
+    const { files, startIndex } = data;
+    const cache = await caches.open(CACHE_NAME);
+    const totalFiles = files.length;
+    let cachedCount = startIndex;
 
-        const filesToCache = allFiles.filter(file => {
-          const fileUrl = new URL(file, self.location.href).href;
-          return !cachedUrls.has(fileUrl);
-        });
+    const endIndex = Math.min(startIndex + CHUNK_SIZE, totalFiles);
+    const chunk = files.slice(startIndex, endIndex);
 
-        let newlyCachedFiles = 0;
-        const alreadyCachedCount = totalFiles - filesToCache.length;
-
-        self.clients.matchAll().then(clients => {
-            clients.forEach(client => {
-                client.postMessage({
-                    type: 'CACHE_UPDATE',
-                    cached: alreadyCachedCount,
-                    total: totalFiles
-                });
-            });
-        });
-
-        console.log(`Resuming cache. Already cached: ${alreadyCachedCount}, To cache: ${filesToCache.length}`);
-
-        for (const file of filesToCache) {
-          let retries = 10;
-          let delay = 500;
-          while (retries > 0) {
+    for (const file of chunk) {
+        let retries = 3;
+        let delay = 1000;
+        while (retries > 0) {
             const request = new Request(file, { cache: 'reload' });
             try {
-              const response = await fetch(request);
-              if (response.ok) {
-                await cache.put(request, response);
-                newlyCachedFiles++;
-                self.clients.matchAll().then(clients => {
-                  clients.forEach(client => {
-                    client.postMessage({
-                      type: 'CACHE_UPDATE',
-                      cached: alreadyCachedCount + newlyCachedFiles,
-                      total: totalFiles
-                    });
-                  });
-                });
-                break; // Success
-              } else {
+                const response = await fetch(request);
+                if (response.ok) {
+                    await cache.put(request, response);
+                    cachedCount++;
+                    break; // Success
+                }
                 throw new Error(`Failed to fetch ${file}: ${response.statusText}`);
-              }
             } catch (err) {
-              console.error(`Failed to cache ${file}, retries left: ${retries - 1}`, err);
-              retries--;
-              if (retries > 0) {
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2; // Exponential backoff
-              }
+                console.error(`Failed to cache ${file}, retries left: ${retries - 1}`, err);
+                retries--;
+                if (retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
             }
-          }
         }
-
-        console.log('All files from list cached');
-        self.clients.matchAll().then(clients => {
-          clients.forEach(client => {
-            client.postMessage({
-              type: 'CACHE_COMPLETE',
-              total: totalFiles
-            });
-          });
+    }
+    
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+        client.postMessage({
+            type: 'CHUNK_CACHED',
+            cached: cachedCount,
+            total: totalFiles,
+            nextIndex: endIndex
         });
-      } catch (error) {
-        console.log('Cache install failed:', error);
-      }
-    })());
-  }
+    });
+}
+
+self.addEventListener('message', (event) => {
+    if (event.data.type === 'START_CACHE') {
+        event.waitUntil(cacheFiles(event.data));
+    }
 });
 
 // Activate event - clean up old caches
