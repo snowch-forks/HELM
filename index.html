@@ -1310,6 +1310,7 @@
 <script>
 // Register service worker for PWA functionality
 if ('serviceWorker' in navigator) {
+  let wakeLock = null;
   let heartbeatInterval;
   let lastHeartbeat = Date.now();
   let isCaching = false;
@@ -1346,6 +1347,11 @@ if ('serviceWorker' in navigator) {
       const cacheButton = document.getElementById('cache-button');
       cacheButton.disabled = true;
       cacheButton.innerHTML = 'All files have been cached successfully!';
+      if (wakeLock !== null) {
+        wakeLock.release();
+        wakeLock = null;
+        console.log('Screen Wake Lock released.');
+      }
     } else if (type === 'HEARTBEAT_RESPONSE') {
       lastHeartbeat = Date.now();
     }
@@ -1373,6 +1379,15 @@ if ('serviceWorker' in navigator) {
   document.getElementById('cache-button').addEventListener('click', async () => {
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       try {
+        if ('wakeLock' in navigator) {
+          try {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('Screen Wake Lock is active.');
+          } catch (err) {
+            console.error(`${err.name}, ${err.message}`);
+          }
+        }
+
         const cacheButton = document.getElementById('cache-button');
         cacheButton.disabled = true;
         cacheButton.textContent = 'Caching...';
@@ -1390,6 +1405,11 @@ if ('serviceWorker' in navigator) {
         const cacheButton = document.getElementById('cache-button');
         cacheButton.disabled = false;
         cacheButton.textContent = '⬇️ Cache All Content for Offline Use';
+        if (wakeLock !== null) {
+          wakeLock.release();
+          wakeLock = null;
+          console.log('Screen Wake Lock released.');
+        }
       }
     }
   });
