@@ -79,6 +79,8 @@ self.addEventListener('message', (event) => {
                 });
             });
         });
+    } else if (event.data.type === 'HEARTBEAT') {
+        event.source.postMessage({ type: 'HEARTBEAT_RESPONSE' });
     }
 });
 

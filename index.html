@@ -1313,6 +1313,10 @@
 <script>
 // Register service worker for PWA functionality
 if ('serviceWorker' in navigator) {
+  let heartbeatInterval;
+  let lastHeartbeat = Date.now();
+  let isCaching = false;
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(registration => {
       console.log('ServiceWorker registration successful with scope: ', registration.scope);
@@ -1327,43 +1331,74 @@ if ('serviceWorker' in navigator) {
 
   // Listen for messages from the service worker
   navigator.serviceWorker.addEventListener('message', event => {
-    const { type, cached, total, isCaching } = event.data;
-    if (type === 'CACHE_PROGRESS' || type === 'CACHE_STATUS') {
+    const { type, cached, total } = event.data;
+    if (type === 'CACHE_PROGRESS') {
+      isCaching = true;
       updateCacheProgress(cached, total);
+      startHeartbeat();
+    } else if (type === 'CACHE_STATUS') {
+      isCaching = event.data.isCaching;
+      updateCacheProgress(cached, total);
+      if (isCaching) {
+        startHeartbeat();
+      }
     } else if (type === 'CACHE_COMPLETE') {
+      isCaching = false;
       updateCacheProgress(cached, total);
+      stopHeartbeat();
       alert('All files have been cached successfully!');
+    } else if (type === 'HEARTBEAT_RESPONSE') {
+      lastHeartbeat = Date.now();
     }
   });
-}
 
-document.getElementById('cache-button').addEventListener('click', async () => {
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    try {
-      const response = await fetch('file-list.json');
-      if (!response.ok) throw new Error('Failed to fetch file-list.json');
-      const allFiles = await response.json();
-
-      navigator.serviceWorker.controller.postMessage({
-        type: 'START_CACHE',
-        files: allFiles
-      });
-    } catch (error) {
-      console.error("Could not start caching:", error);
-    }
+  function startHeartbeat() {
+    if (heartbeatInterval) return;
+    lastHeartbeat = Date.now();
+    heartbeatInterval = setInterval(() => {
+      if (Date.now() - lastHeartbeat > 15000) { // 15 seconds timeout
+        console.log('Service worker stalled. Restarting cache...');
+        document.getElementById('cache-button').click();
+        stopHeartbeat(); // Stop to avoid multiple restarts
+      } else if (isCaching) {
+        navigator.serviceWorker.controller.postMessage({ type: 'HEARTBEAT' });
+      }
+    }, 5000); // Check every 5 seconds
   }
-});
 
-function updateCacheProgress(cachedCount, totalCount) {
-  const progressText = document.getElementById('cache-progress-text');
-  const cacheProgress = document.getElementById('cache-progress');
-  
-  if (totalCount > 0) {
-    cacheProgress.style.display = 'block';
-    const percentage = ((cachedCount / totalCount) * 100).toFixed(2);
-    progressText.textContent = `Cached ${cachedCount} of ${totalCount} files (${percentage}%).`;
-  } else {
-    cacheProgress.style.display = 'none';
+  function stopHeartbeat() {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+
+  document.getElementById('cache-button').addEventListener('click', async () => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      try {
+        const response = await fetch('file-list.json');
+        if (!response.ok) throw new Error('Failed to fetch file-list.json');
+        const allFiles = await response.json();
+
+        navigator.serviceWorker.controller.postMessage({
+          type: 'START_CACHE',
+          files: allFiles
+        });
+      } catch (error) {
+        console.error("Could not start caching:", error);
+      }
+    }
+  });
+
+  function updateCacheProgress(cachedCount, totalCount) {
+    const progressText = document.getElementById('cache-progress-text');
+    const cacheProgress = document.getElementById('cache-progress');
+    
+    if (totalCount > 0) {
+      cacheProgress.style.display = 'block';
+      const percentage = ((cachedCount / totalCount) * 100).toFixed(2);
+      progressText.textContent = `Cached ${cachedCount} of ${totalCount} files (${percentage}%).`;
+    } else {
+      cacheProgress.style.display = 'none';
+    }
   }
 }
 
