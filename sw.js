@@ -18,41 +18,29 @@ self.addEventListener('message', event => {
           return caches.open(CACHE_NAME)
             .then(async (cache) => {
               console.log('Opened cache for manual caching');
-              const chunkSize = 50;
-              for (let i = 0; i < files.length; i += chunkSize) {
-                const chunk = files.slice(i, i + chunkSize);
-                let delay = 250;
-                for (const file of chunk) {
-                  let retries = 6;
-                  while (retries > 0) {
-                    try {
-                      await cache.add(file);
-                      cachedFiles++;
-                      self.clients.matchAll().then(clients => {
-                        clients.forEach(client => {
-                          client.postMessage({
-                            type: 'CACHE_UPDATE',
-                            cached: cachedFiles,
-                            total: totalFiles
-                          });
-                        });
-                      });
-                      delay = 250; // Reset delay on success
-                      break; // Success, exit retry loop
-                    } catch (err) {
-                      console.error(`Failed to cache ${file}, retries left: ${retries - 1}`, err);
-                      retries--;
-                      if (retries > 0) {
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        delay *= 2; // Exponential backoff
-                      }
-                    }
+              for (const file of files) {
+                try {
+                  const request = new Request(file, { cache: 'reload' });
+                  const response = await fetch(request);
+                  if (!response.ok) {
+                    throw new Error(`Failed to fetch ${file}: ${response.statusText}`);
                   }
+                  await cache.put(request, response);
+                  cachedFiles++;
+                  self.clients.matchAll().then(clients => {
+                    clients.forEach(client => {
+                      client.postMessage({
+                        type: 'CACHE_UPDATE',
+                        cached: cachedFiles,
+                        total: totalFiles
+                      });
+                    });
+                  });
+                } catch (err) {
+                  console.error(`Failed to cache ${file}`, err);
                 }
-                // Wait 1 second between chunks
-                if (i + chunkSize < files.length) {
-                  await new Promise(resolve => setTimeout(resolve, 1000));
-                }
+                // Add a small delay between each file request
+                await new Promise(resolve => setTimeout(resolve, 100));
               }
               console.log('All files from list cached');
               self.clients.matchAll().then(clients => {

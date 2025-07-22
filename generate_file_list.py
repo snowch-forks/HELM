@@ -11,7 +11,8 @@ def generate_file_list(root_dir):
         './cache-status.html',
         './toplayer.css',
         './manifest.json',
-        './favicon.ico'
+        './favicon.ico',
+        'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML-full'
     ]
     # Exclude .git directory and other dotfiles
     exclude_dirs = ['.git']

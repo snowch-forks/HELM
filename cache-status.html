@@ -143,13 +143,23 @@
                 const totalCachedFiles = cachedRequests.length;
                 const chapterFileCount = chapterFiles.length;
                 
+                // Fetch the full list of files to calculate progress
+                const response = await fetch('file-list.json');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch file-list.json');
+                }
+                const fileList = await response.json();
+                const totalFiles = fileList.length;
+
+                const progress = totalFiles > 0 ? (cachedUrls.length / totalFiles) * 100 : 0;
+                
                 const progressBar = document.getElementById('overall-progress');
-                progressBar.style.width = '100%';
-                progressBar.textContent = `${totalCachedFiles} files cached`;
-                progressBar.className = `progress-bar ${totalCachedFiles > 0 ? 'bg-success' : 'bg-primary'}`;
+                progressBar.style.width = `${progress.toFixed(2)}%`;
+                progressBar.textContent = `${progress.toFixed(2)}%`;
+                progressBar.className = `progress-bar ${progress === 100 ? 'bg-success' : 'bg-info'}`;
 
                 document.getElementById('progress-text').textContent = 
-                    `${totalCachedFiles} total files cached (${essentialCached}/${essentialFiles.length} essential, ${chapterFileCount} chapter files across ${Object.keys(chapterGroups).length} chapters)`;
+                    `Cached ${cachedUrls.length} of ${totalFiles} files.`;
 
                 // Cache info
                 document.getElementById('cache-info').innerHTML = `
