@@ -1373,23 +1373,32 @@ async function checkCacheStatus() {
 
 document.getElementById('cache-button').addEventListener('click', async () => {
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    if (allFiles.length === 0) {
-      try {
-        const response = await fetch('file-list.json');
-        if (!response.ok) throw new Error('Failed to fetch file-list.json');
-        allFiles = await response.json();
-      } catch (error) {
-        console.error("Could not start caching:", error);
-        return;
+    try {
+      const cache = await caches.open('helm-v1');
+      const cachedRequests = await cache.keys();
+      const cachedUrls = new Set(cachedRequests.map(req => new URL(req.url).href));
+
+      const response = await fetch('file-list.json');
+      if (!response.ok) throw new Error('Failed to fetch file-list.json');
+      const allFiles = await response.json();
+
+      const filesToCache = allFiles.filter(file => {
+        const fileUrl = new URL(file, window.location.href).href;
+        return !cachedUrls.has(fileUrl);
+      });
+
+      if (filesToCache.length > 0) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'START_CACHE',
+          files: filesToCache,
+          startIndex: 0
+        });
+      } else {
+        updateCacheProgress(allFiles.length, allFiles.length);
       }
+    } catch (error) {
+      console.error("Could not start caching:", error);
     }
-    
-    // Start caching from the beginning
-    navigator.serviceWorker.controller.postMessage({
-      type: 'START_CACHE',
-      files: allFiles,
-      startIndex: 0
-    });
   }
 });
 

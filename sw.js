@@ -12,7 +12,6 @@ async function cacheFiles(data) {
     const { files, startIndex } = data;
     const cache = await caches.open(CACHE_NAME);
     const totalFiles = files.length;
-    let cachedCount = startIndex;
 
     const endIndex = Math.min(startIndex + CHUNK_SIZE, totalFiles);
     const chunk = files.slice(startIndex, endIndex);
@@ -26,7 +25,6 @@ async function cacheFiles(data) {
                 const response = await fetch(request);
                 if (response.ok) {
                     await cache.put(request, response);
-                    cachedCount++;
                     break; // Success
                 }
                 throw new Error(`Failed to fetch ${file}: ${response.statusText}`);
@@ -45,7 +43,7 @@ async function cacheFiles(data) {
     clients.forEach(client => {
         client.postMessage({
             type: 'CHUNK_CACHED',
-            cached: cachedCount,
+            cached: endIndex,
             total: totalFiles,
             nextIndex: endIndex
         });
