@@ -1373,9 +1373,6 @@ async function checkCacheStatus() {
 
 document.getElementById('cache-button').addEventListener('click', async () => {
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    if (!cacheInterval) {
-      monitorDownloads();
-    }
     try {
       const cache = await caches.open('helm-v1');
       const cachedRequests = await cache.keys();
@@ -1412,39 +1409,6 @@ function updateCacheProgress(cachedCount, totalCount) {
     const percentage = ((cachedCount / totalCount) * 100).toFixed(2);
     progressText.textContent = `Cached ${cachedCount} of ${totalCount} files (${percentage}%).`;
   }
-}
-
-let cacheInterval;
-
-function monitorDownloads() {
-  let lastCachedCount = -1;
-  let checks = 0;
-
-  cacheInterval = setInterval(async () => {
-    const progressText = document.getElementById('cache-progress-text').textContent;
-    const match = progressText.match(/Cached (\d+) of (\d+)/);
-    if (!match) return;
-
-    const cachedCount = parseInt(match[1], 10);
-    const totalCount = parseInt(match[2], 10);
-
-    if (cachedCount === totalCount) {
-      clearInterval(cacheInterval);
-      return;
-    }
-
-    if (cachedCount === lastCachedCount) {
-      checks++;
-      if (checks >= 3) { // If no progress after 3 checks (30 seconds)
-        console.log('Download stalled, restarting...');
-        document.getElementById('cache-button').click();
-        checks = 0; // Reset checks
-      }
-    } else {
-      lastCachedCount = cachedCount;
-      checks = 0; // Reset checks on progress
-    }
-  }, 10000); // Check every 10 seconds
 }
 
 

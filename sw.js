@@ -9,6 +9,8 @@ self.addEventListener('install', function(event) {
 const CHUNK_SIZE = 50;
 
 let cachingInProgress = {};
+let allFiles = [];
+let cacheInterval;
 
 async function cacheFiles(data) {
     const { files, startIndex } = data;
@@ -57,11 +59,57 @@ async function cacheFiles(data) {
     });
 
     delete cachingInProgress[startIndex];
+
+    if (endIndex < totalFiles) {
+        cacheFiles({ files, startIndex: endIndex });
+    } else {
+        clearInterval(cacheInterval);
+        cacheInterval = null;
+    }
+}
+
+function monitorDownloads(files) {
+    let lastCachedCount = -1;
+    let checks = 0;
+    allFiles = files;
+
+    if (cacheInterval) {
+        return;
+    }
+
+    cacheInterval = setInterval(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cachedRequests = await cache.keys();
+        const cachedUrls = new Set(cachedRequests.map(req => new URL(req.url).href));
+        const cachedCount = allFiles.filter(file => cachedUrls.has(new URL(file, self.location.origin).href)).length;
+
+        if (cachedCount === allFiles.length) {
+            clearInterval(cacheInterval);
+            cacheInterval = null;
+            return;
+        }
+
+        if (cachedCount === lastCachedCount) {
+            checks++;
+            if (checks >= 3) { // If no progress after 3 checks (30 seconds)
+                console.log('Download stalled, restarting...');
+                const filesToCache = allFiles.filter(file => !cachedUrls.has(new URL(file, self.location.origin).href));
+                cacheFiles({ files: filesToCache, startIndex: 0 });
+                checks = 0; // Reset checks
+            }
+        } else {
+            lastCachedCount = cachedCount;
+            checks = 0; // Reset checks on progress
+        }
+    }, 10000); // Check every 10 seconds
 }
 
 self.addEventListener('message', (event) => {
     if (event.data.type === 'START_CACHE') {
         event.waitUntil(cacheFiles(event.data));
+        if (!cacheInterval) {
+            monitorDownloads(event.data.files);
+        }
     }
 });
 
