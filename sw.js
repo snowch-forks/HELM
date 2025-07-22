@@ -19,7 +19,7 @@ self.addEventListener('message', (event) => {
         const totalFiles = allFiles.length;
 
         const filesToCache = allFiles.filter(file => {
-          const fileUrl = new URL(file, self.location.origin).href;
+          const fileUrl = new URL(file, self.location.href).href;
           return !cachedUrls.has(fileUrl);
         });
 
