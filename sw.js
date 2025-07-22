@@ -18,10 +18,10 @@ self.addEventListener('message', event => {
           return caches.open(CACHE_NAME)
             .then(async (cache) => {
               console.log('Opened cache for manual caching');
-              let delay = 250;
-              for (const file of files) {
-                let retries = 5;
-                while (retries > 0) {
+              const chunkSize = 50;
+              for (let i = 0; i < files.length; i += chunkSize) {
+                const chunk = files.slice(i, i + chunkSize);
+                for (const file of chunk) {
                   try {
                     await cache.add(file);
                     cachedFiles++;
@@ -34,16 +34,13 @@ self.addEventListener('message', event => {
                         });
                       });
                     });
-                    delay = 250; // Reset delay on success
-                    break; // Success, exit retry loop
                   } catch (err) {
-                    console.error(`Failed to cache ${file}, retries left: ${retries - 1}`, err);
-                    retries--;
-                    if (retries > 0) {
-                      await new Promise(resolve => setTimeout(resolve, delay));
-                      delay *= 2; // Exponential backoff
-                    }
+                    console.error(`Failed to cache ${file}:`, err);
                   }
+                }
+                // Wait 1 second between chunks
+                if (i + chunkSize < files.length) {
+                  await new Promise(resolve => setTimeout(resolve, 1000));
                 }
               }
               console.log('All files from list cached');
