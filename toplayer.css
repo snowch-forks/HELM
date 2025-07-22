@@ -25,4 +25,15 @@ a {
     color: #337ab7;
     text-decoration: none;
 }
-    
+
+#cache-button {
+    text-align: center;
+    padding: 10px;
+}
+
+#cache-progress-text {
+    margin-top: 10px;
+    background-color: transparent;
+    border: none;
+    color: black;
+}

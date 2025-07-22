@@ -40,9 +40,6 @@
   <button id="cache-button" class="btn btn-sm btn-info">⬇️ Cache All Content for Offline Use</button>
   <button id="install-button" class="btn btn-sm btn-success" style="display: none;">⬇️ Install App</button>
 </div>
-<div id="cache-progress" class="mt-2" style="display: none;">
-  <p id="cache-progress-text"></p>
-</div>
 </div>
 </div>
 <div class="col-sm">
@@ -1348,8 +1345,7 @@ if ('serviceWorker' in navigator) {
       stopHeartbeat();
       const cacheButton = document.getElementById('cache-button');
       cacheButton.disabled = true;
-      cacheButton.textContent = 'Content Cached';
-      alert('All files have been cached successfully!');
+      cacheButton.innerHTML = 'All files have been cached successfully!';
     } else if (type === 'HEARTBEAT_RESPONSE') {
       lastHeartbeat = Date.now();
     }
@@ -1399,15 +1395,10 @@ if ('serviceWorker' in navigator) {
   });
 
   function updateCacheProgress(cachedCount, totalCount) {
-    const progressText = document.getElementById('cache-progress-text');
-    const cacheProgress = document.getElementById('cache-progress');
-    
+    const cacheButton = document.getElementById('cache-button');
     if (totalCount > 0) {
-      cacheProgress.style.display = 'block';
       const percentage = ((cachedCount / totalCount) * 100).toFixed(2);
-      progressText.textContent = `Cached ${cachedCount} of ${totalCount} files (${percentage}%).`;
-    } else {
-      cacheProgress.style.display = 'none';
+      cacheButton.textContent = `Cached ${cachedCount} of ${totalCount} files (${percentage}%).`;
     }
   }
 }
