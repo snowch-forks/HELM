@@ -6,57 +6,63 @@ self.addEventListener('install', function(event) {
   event.waitUntil(self.skipWaiting());
 });
 
-self.addEventListener('message', event => {
+self.addEventListener('message', async (event) => {
   if (event.data.type === 'START_CACHE') {
-    event.waitUntil(
-      fetch('file-list.json')
-        .then(response => response.json())
-        .then(files => {
-          let totalFiles = files.length;
-          let cachedFiles = 0;
+    try {
+      const response = await fetch('file-list.json');
+      const files = await response.json();
+      const totalFiles = files.length;
+      let cachedFiles = 0;
 
-          return caches.open(CACHE_NAME)
-            .then(async (cache) => {
-              console.log('Opened cache for manual caching');
-              for (const file of files) {
-                try {
-                  const request = new Request(file, { cache: 'reload' });
-                  const response = await fetch(request);
-                  if (!response.ok) {
-                    throw new Error(`Failed to fetch ${file}: ${response.statusText}`);
-                  }
-                  await cache.put(request, response);
-                  cachedFiles++;
-                  self.clients.matchAll().then(clients => {
-                    clients.forEach(client => {
-                      client.postMessage({
-                        type: 'CACHE_UPDATE',
-                        cached: cachedFiles,
-                        total: totalFiles
-                      });
-                    });
-                  });
-                } catch (err) {
-                  console.error(`Failed to cache ${file}`, err);
-                }
-                // Add a small delay between each file request
-                await new Promise(resolve => setTimeout(resolve, 100));
-              }
-              console.log('All files from list cached');
+      const cache = await caches.open(CACHE_NAME);
+      console.log('Opened cache for manual caching');
+
+      for (const file of files) {
+        let retries = 10;
+        let delay = 500;
+        while (retries > 0) {
+          const request = new Request(file, { cache: 'reload' });
+          try {
+            const response = await fetch(request);
+            if (response.ok) {
+              await cache.put(request, response);
+              cachedFiles++;
               self.clients.matchAll().then(clients => {
                 clients.forEach(client => {
                   client.postMessage({
-                    type: 'CACHE_COMPLETE',
-                    total: files.length
+                    type: 'CACHE_UPDATE',
+                    cached: cachedFiles,
+                    total: totalFiles
                   });
                 });
               });
-            });
-        })
-        .catch(function(error) {
-          console.log('Cache install failed:', error);
-        })
-    );
+              break; // Success
+            } else {
+              throw new Error(`Failed to fetch ${file}: ${response.statusText}`);
+            }
+          } catch (err) {
+            console.error(`Failed to cache ${file}, retries left: ${retries - 1}`, err);
+            retries--;
+            if (retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, delay));
+              delay *= 2; // Exponential backoff
+            }
+          }
+        }
+      }
+
+      console.log('All files from list cached');
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'CACHE_COMPLETE',
+            total: files.length
+          });
+        });
+      });
+    } catch (error) {
+      console.log('Cache install failed:', error);
+    }
   }
 });
 
