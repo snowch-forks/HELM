@@ -37,7 +37,7 @@
   <strong>📱 Offline Mode:</strong> This app works offline! Visit chapters while online to cache them for offline use.
 </div>
 <div class="mt-2">
-  <button id="cache-button" class="btn btn-sm btn-info">⬇️ Download All Content</button>
+  <button id="cache-button" class="btn btn-sm btn-info">⬇️ Cache All Content for Offline Use</button>
   <button id="install-button" class="btn btn-sm btn-success" style="display: none;">⬇️ Install App</button>
 </div>
 <div id="cache-progress" class="mt-2" style="display: none;">
@@ -1346,6 +1346,9 @@ if ('serviceWorker' in navigator) {
       isCaching = false;
       updateCacheProgress(cached, total);
       stopHeartbeat();
+      const cacheButton = document.getElementById('cache-button');
+      cacheButton.disabled = true;
+      cacheButton.textContent = 'Content Cached';
       alert('All files have been cached successfully!');
     } else if (type === 'HEARTBEAT_RESPONSE') {
       lastHeartbeat = Date.now();
@@ -1374,6 +1377,10 @@ if ('serviceWorker' in navigator) {
   document.getElementById('cache-button').addEventListener('click', async () => {
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
       try {
+        const cacheButton = document.getElementById('cache-button');
+        cacheButton.disabled = true;
+        cacheButton.textContent = 'Caching...';
+
         const response = await fetch('file-list.json');
         if (!response.ok) throw new Error('Failed to fetch file-list.json');
         const allFiles = await response.json();
@@ -1384,6 +1391,9 @@ if ('serviceWorker' in navigator) {
         });
       } catch (error) {
         console.error("Could not start caching:", error);
+        const cacheButton = document.getElementById('cache-button');
+        cacheButton.disabled = false;
+        cacheButton.textContent = '⬇️ Cache All Content for Offline Use';
       }
     }
   });
