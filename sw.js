@@ -2,6 +2,7 @@ const CACHE_NAME = 'helm-v1';
 const urlsToCache = [
   '/',
   '/index.html',
+  '/cache-status.html',
   '/toplayer.css',
   '/manifest.json',
   '/img/helmlogo2.png',
@@ -376,7 +377,7 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        // Return cached version or fetch from network
+        // Return cached version if available
         if (response) {
           return response;
         }
@@ -393,7 +394,7 @@ self.addEventListener('fetch', event => {
           // Clone the response because it's a stream
           const responseToCache = response.clone();
           
-          // Add to cache for future use
+          // Add to cache for future use (especially for chapter files)
           caches.open(CACHE_NAME)
             .then(cache => {
               cache.put(event.request, responseToCache);
@@ -401,40 +402,11 @@ self.addEventListener('fetch', event => {
           
           return response;
         }).catch(() => {
-          // If both cache and network fail, return the main page
+          // If both cache and network fail, return the main page for document requests
           if (event.request.destination === 'document') {
             return caches.match('/index.html');
           }
         });
       })
   );
-});
-
-// Cache all chapter pages dynamically when they're visited
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  
-  // Cache chapter pages when they're accessed
-  if (url.pathname.includes('-web/') && url.pathname.endsWith('.html')) {
-    event.respondWith(
-      caches.match(event.request)
-        .then(response => {
-          if (response) {
-            return response;
-          }
-          
-          return fetch(event.request)
-            .then(response => {
-              if (response.status === 200) {
-                const responseClone = response.clone();
-                caches.open(CACHE_NAME)
-                  .then(cache => {
-                    cache.put(event.request, responseClone);
-                  });
-              }
-              return response;
-            });
-        })
-    );
-  }
 });
