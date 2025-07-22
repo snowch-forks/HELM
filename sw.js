@@ -21,21 +21,32 @@ self.addEventListener('message', event => {
               const chunkSize = 50;
               for (let i = 0; i < files.length; i += chunkSize) {
                 const chunk = files.slice(i, i + chunkSize);
+                let delay = 250;
                 for (const file of chunk) {
-                  try {
-                    await cache.add(file);
-                    cachedFiles++;
-                    self.clients.matchAll().then(clients => {
-                      clients.forEach(client => {
-                        client.postMessage({
-                          type: 'CACHE_UPDATE',
-                          cached: cachedFiles,
-                          total: totalFiles
+                  let retries = 6;
+                  while (retries > 0) {
+                    try {
+                      await cache.add(file);
+                      cachedFiles++;
+                      self.clients.matchAll().then(clients => {
+                        clients.forEach(client => {
+                          client.postMessage({
+                            type: 'CACHE_UPDATE',
+                            cached: cachedFiles,
+                            total: totalFiles
+                          });
                         });
                       });
-                    });
-                  } catch (err) {
-                    console.error(`Failed to cache ${file}:`, err);
+                      delay = 250; // Reset delay on success
+                      break; // Success, exit retry loop
+                    } catch (err) {
+                      console.error(`Failed to cache ${file}, retries left: ${retries - 1}`, err);
+                      retries--;
+                      if (retries > 0) {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; // Exponential backoff
+                      }
+                    }
                   }
                 }
                 // Wait 1 second between chunks
