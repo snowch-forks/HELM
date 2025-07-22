@@ -18,23 +18,32 @@ self.addEventListener('message', event => {
           return caches.open(CACHE_NAME)
             .then(async (cache) => {
               console.log('Opened cache for manual caching');
+              let delay = 250;
               for (const file of files) {
-                try {
-                  await cache.add(file);
-                  cachedFiles++;
-                  self.clients.matchAll().then(clients => {
-                    clients.forEach(client => {
-                      client.postMessage({
-                        type: 'CACHE_UPDATE',
-                        cached: cachedFiles,
-                        total: totalFiles
+                let retries = 5;
+                while (retries > 0) {
+                  try {
+                    await cache.add(file);
+                    cachedFiles++;
+                    self.clients.matchAll().then(clients => {
+                      clients.forEach(client => {
+                        client.postMessage({
+                          type: 'CACHE_UPDATE',
+                          cached: cachedFiles,
+                          total: totalFiles
+                        });
                       });
                     });
-                  });
-                  // Add a small delay to be respectful of network resources
-                  await new Promise(resolve => setTimeout(resolve, 50));
-                } catch (err) {
-                  console.error(`Failed to cache ${file}:`, err);
+                    delay = 250; // Reset delay on success
+                    break; // Success, exit retry loop
+                  } catch (err) {
+                    console.error(`Failed to cache ${file}, retries left: ${retries - 1}`, err);
+                    retries--;
+                    if (retries > 0) {
+                      await new Promise(resolve => setTimeout(resolve, delay));
+                      delay *= 2; // Exponential backoff
+                    }
+                  }
                 }
               }
               console.log('All files from list cached');

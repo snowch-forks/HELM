@@ -6,12 +6,12 @@ def generate_file_list(root_dir):
     Generates a list of all files to be cached.
     """
     file_list = [
-        '/',
-        '/index.html',
-        '/cache-status.html',
-        '/toplayer.css',
-        '/manifest.json',
-        '/favicon.ico'
+        './',
+        './index.html',
+        './cache-status.html',
+        './toplayer.css',
+        './manifest.json',
+        './favicon.ico'
     ]
     # Exclude .git directory and other dotfiles
     exclude_dirs = ['.git']
@@ -22,7 +22,7 @@ def generate_file_list(root_dir):
             if file.startswith('.'):
                 continue
             full_path = os.path.join(root, file)
-            relative_path = '/' + os.path.relpath(full_path, root_dir)
+            relative_path = './' + os.path.relpath(full_path, root_dir)
             file_list.append(relative_path)
     return sorted(list(set(file_list)))
 
