@@ -1,26 +1,58 @@
 const CACHE_NAME = 'helm-v1';
 
-// Install event - cache essential resources
+// Install event - take control of the page
 self.addEventListener('install', function(event) {
   console.log('Service Worker installing...');
-  event.waitUntil(
-    fetch('file-list.json')
-      .then(response => response.json())
-      .then(files => {
-        return caches.open(CACHE_NAME)
-          .then(function(cache) {
-            console.log('Opened cache');
-            return cache.addAll(files);
-          });
-      })
-      .then(function() {
-        console.log('All files from list cached');
-        return self.skipWaiting();
-      })
-      .catch(function(error) {
-        console.log('Cache install failed:', error);
-      })
-  );
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener('message', event => {
+  if (event.data.type === 'START_CACHE') {
+    event.waitUntil(
+      fetch('file-list.json')
+        .then(response => response.json())
+        .then(files => {
+          let totalFiles = files.length;
+          let cachedFiles = 0;
+
+          return caches.open(CACHE_NAME)
+            .then(async (cache) => {
+              console.log('Opened cache for manual caching');
+              for (const file of files) {
+                try {
+                  await cache.add(file);
+                  cachedFiles++;
+                  self.clients.matchAll().then(clients => {
+                    clients.forEach(client => {
+                      client.postMessage({
+                        type: 'CACHE_UPDATE',
+                        cached: cachedFiles,
+                        total: totalFiles
+                      });
+                    });
+                  });
+                  // Add a small delay to be respectful of network resources
+                  await new Promise(resolve => setTimeout(resolve, 50));
+                } catch (err) {
+                  console.error(`Failed to cache ${file}:`, err);
+                }
+              }
+              console.log('All files from list cached');
+              self.clients.matchAll().then(clients => {
+                clients.forEach(client => {
+                  client.postMessage({
+                    type: 'CACHE_COMPLETE',
+                    total: files.length
+                  });
+                });
+              });
+            });
+        })
+        .catch(function(error) {
+          console.log('Cache install failed:', error);
+        })
+    );
+  }
 });
 
 // Activate event - clean up old caches

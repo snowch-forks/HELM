@@ -10,7 +10,8 @@ def generate_file_list(root_dir):
         '/index.html',
         '/cache-status.html',
         '/toplayer.css',
-        '/manifest.json'
+        '/manifest.json',
+        '/favicon.ico'
     ]
     # Exclude .git directory and other dotfiles
     exclude_dirs = ['.git']

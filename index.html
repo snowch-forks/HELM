@@ -13,6 +13,7 @@
 </script>
 <link href="toplayer.css" rel="stylesheet" type="text/css"/>
 <link rel="manifest" href="manifest.json">
+<link rel="icon" href="/favicon.ico" sizes="any">
 <meta name="theme-color" content="#337ab7">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
@@ -36,7 +37,11 @@
   <strong>📱 Offline Mode:</strong> This app works offline! Visit chapters while online to cache them for offline use.
 </div>
 <div class="mt-2">
-  <a href="cache-status.html" class="btn btn-sm btn-outline-primary">📊 Check Cache Status</a>
+  <button id="cache-button" class="btn btn-sm btn-info">⬇️ Download All Content</button>
+  <button id="install-button" class="btn btn-sm btn-success" style="display: none;">⬇️ Install App</button>
+</div>
+<div id="cache-progress" class="mt-2" style="display: none;">
+  <p id="cache-progress-text"></p>
 </div>
 </div>
 </div>
@@ -1308,62 +1313,88 @@
 <script>
 // Register service worker for PWA functionality
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./sw.js')
-      .then(function(registration) {
-        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-      })
-      .catch(function(error) {
-        console.log('ServiceWorker registration failed: ', error);
-      });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(registration => {
+      console.log('ServiceWorker registration successful with scope: ', registration.scope);
+      // Check cache status on load
+      checkCacheStatus();
+    }).catch(error => {
+      console.log('ServiceWorker registration failed: ', error);
+    });
+  });
+
+  // Listen for messages from the service worker
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data.type === 'CACHE_UPDATE') {
+      updateCacheProgress(event.data.cached, event.data.total);
+    }
+    if (event.data.type === 'CACHE_COMPLETE') {
+      updateCacheProgress(event.data.total, event.data.total);
+    }
   });
 }
 
+async function checkCacheStatus() {
+  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+    document.getElementById('cache-progress').style.display = 'none';
+    return;
+  }
+
+  try {
+    const cache = await caches.open('helm-v1');
+    const cachedRequests = await cache.keys();
+    const cachedUrls = cachedRequests.map(req => new URL(req.url).pathname);
+
+    const response = await fetch('file-list.json');
+    if (!response.ok) {
+        throw new Error('Failed to fetch file-list.json');
+    }
+    const fileList = await response.json();
+
+    document.getElementById('cache-progress').style.display = 'block';
+
+    updateCacheProgress(cachedUrls.length, fileList.length);
+  } catch (error) {
+    console.error("Could not check cache status:", error);
+    document.getElementById('cache-progress').style.display = 'none';
+  }
+}
+
+document.getElementById('cache-button').addEventListener('click', () => {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'START_CACHE' });
+  }
+});
+
+function updateCacheProgress(cachedCount, totalCount) {
+  const progressText = document.getElementById('cache-progress-text');
+  
+  if (totalCount > 0) {
+    progressText.textContent = `Cached ${cachedCount} of ${totalCount} files.`;
+  }
+}
+
+
 // Add install prompt functionality
 let deferredPrompt;
-const installButton = document.createElement('button');
-installButton.textContent = 'Install App';
-installButton.style.cssText = `
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background-color: #337ab7;
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 5px;
-  cursor: pointer;
-  display: none;
-  z-index: 1000;
-  font-size: 14px;
-`;
-
-document.body.appendChild(installButton);
+const installButton = document.getElementById('install-button');
 
 window.addEventListener('beforeinstallprompt', (e) => {
-  // Prevent the mini-infobar from appearing on mobile
   e.preventDefault();
-  // Stash the event so it can be triggered later
   deferredPrompt = e;
-  // Show the install button
   installButton.style.display = 'block';
 });
 
 installButton.addEventListener('click', async () => {
   if (deferredPrompt) {
-    // Show the install prompt
     deferredPrompt.prompt();
-    // Wait for the user to respond to the prompt
     const { outcome } = await deferredPrompt.userChoice;
     console.log(`User response to the install prompt: ${outcome}`);
-    // Clear the deferredPrompt variable
     deferredPrompt = null;
-    // Hide the install button
     installButton.style.display = 'none';
   }
 });
 
-// Hide the install button if the app is already installed
 window.addEventListener('appinstalled', () => {
   installButton.style.display = 'none';
   console.log('PWA was installed');
@@ -1388,45 +1419,6 @@ updateOnlineStatus();
 // Listen for online/offline events
 window.addEventListener('online', updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
-
-// Show offline info on first visit and listen for caching progress
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.ready.then(() => {
-    // Show the offline capability info briefly
-    setTimeout(() => {
-      if (navigator.onLine) {
-        offlineStatus.style.display = 'block';
-        offlineStatus.innerHTML = '<strong>📱 Downloading chapters for offline use...</strong> This happens automatically in the background.';
-        setTimeout(() => {
-          if (navigator.onLine) {
-            offlineStatus.style.display = 'none';
-          }
-        }, 5000); // Hide after 5 seconds if still online
-      }
-    }, 1000);
-  });
-
-  // Listen for messages from service worker
-  navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data.type === 'CACHE_COMPLETE') {
-      console.log(`All chapters cached! ${event.data.cached} files across ${event.data.chapters} chapters available offline.`);
-      
-      // Show completion message
-      if (navigator.onLine) {
-        offlineStatus.style.display = 'block';
-        offlineStatus.className = 'alert alert-success';
-        offlineStatus.innerHTML = `<strong>✅ All ${event.data.chapters} chapters (${event.data.cached} files) are now available offline!</strong> You can use this app without an internet connection.`;
-        
-        // Hide after 10 seconds
-        setTimeout(() => {
-          if (navigator.onLine) {
-            offlineStatus.style.display = 'none';
-          }
-        }, 10000);
-      }
-    }
-  });
-}
 </script>
 </body>
 </html>
