@@ -6,26 +6,23 @@ self.addEventListener('install', function(event) {
   event.waitUntil(self.skipWaiting());
 });
 
-const CHUNK_SIZE = 50;
-
-let cachingInProgress = {};
+let isCaching = false;
 let allFiles = [];
-let cacheInterval;
+let totalFiles = 0;
+let cachedCount = 0;
 
-async function cacheFiles(data) {
-    const { files, startIndex } = data;
-    if (cachingInProgress[startIndex]) {
+async function cacheFiles(files) {
+    if (isCaching) {
         return;
     }
-    cachingInProgress[startIndex] = true;
+    isCaching = true;
+    allFiles = files;
+    totalFiles = files.length;
+    cachedCount = 0;
 
     const cache = await caches.open(CACHE_NAME);
-    const totalFiles = files.length;
-
-    const endIndex = Math.min(startIndex + CHUNK_SIZE, totalFiles);
-    const chunk = files.slice(startIndex, endIndex);
-
-    for (const file of chunk) {
+    
+    for (const file of allFiles) {
         let retries = 3;
         let delay = 1000;
         while (retries > 0) {
@@ -34,6 +31,7 @@ async function cacheFiles(data) {
                 const response = await fetch(request);
                 if (response.ok) {
                     await cache.put(request, response);
+                    cachedCount++;
                     break; // Success
                 }
                 throw new Error(`Failed to fetch ${file}: ${response.statusText}`);
@@ -46,70 +44,41 @@ async function cacheFiles(data) {
                 }
             }
         }
+        const clients = await self.clients.matchAll();
+        clients.forEach(client => {
+            client.postMessage({
+                type: 'CACHE_PROGRESS',
+                cached: cachedCount,
+                total: totalFiles
+            });
+        });
     }
-    
+
+    isCaching = false;
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
         client.postMessage({
-            type: 'CHUNK_CACHED',
-            cached: endIndex,
-            total: totalFiles,
-            nextIndex: endIndex
+            type: 'CACHE_COMPLETE',
+            cached: cachedCount,
+            total: totalFiles
         });
     });
-
-    delete cachingInProgress[startIndex];
-
-    if (endIndex < totalFiles) {
-        cacheFiles({ files, startIndex: endIndex });
-    } else {
-        clearInterval(cacheInterval);
-        cacheInterval = null;
-    }
-}
-
-function monitorDownloads(files) {
-    let lastCachedCount = -1;
-    let checks = 0;
-    allFiles = files;
-
-    if (cacheInterval) {
-        return;
-    }
-
-    cacheInterval = setInterval(async () => {
-        const cache = await caches.open(CACHE_NAME);
-        const cachedRequests = await cache.keys();
-        const cachedUrls = new Set(cachedRequests.map(req => new URL(req.url).href));
-        const cachedCount = allFiles.filter(file => cachedUrls.has(new URL(file, self.location.origin).href)).length;
-
-        if (cachedCount === allFiles.length) {
-            clearInterval(cacheInterval);
-            cacheInterval = null;
-            return;
-        }
-
-        if (cachedCount === lastCachedCount) {
-            checks++;
-            if (checks >= 3) { // If no progress after 3 checks (30 seconds)
-                console.log('Download stalled, restarting...');
-                const filesToCache = allFiles.filter(file => !cachedUrls.has(new URL(file, self.location.origin).href));
-                cacheFiles({ files: filesToCache, startIndex: 0 });
-                checks = 0; // Reset checks
-            }
-        } else {
-            lastCachedCount = cachedCount;
-            checks = 0; // Reset checks on progress
-        }
-    }, 10000); // Check every 10 seconds
 }
 
 self.addEventListener('message', (event) => {
     if (event.data.type === 'START_CACHE') {
-        event.waitUntil(cacheFiles(event.data));
-        if (!cacheInterval) {
-            monitorDownloads(event.data.files);
-        }
+        event.waitUntil(cacheFiles(event.data.files));
+    } else if (event.data.type === 'GET_CACHE_STATUS') {
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'CACHE_STATUS',
+                    isCaching: isCaching,
+                    cached: cachedCount,
+                    total: totalFiles
+                });
+            });
+        });
     }
 });
 
@@ -167,5 +136,3 @@ self.addEventListener('fetch', function(event) {
       })
   );
 });
-
-// All caching is now done during the install phase, so these functions are no longer needed.

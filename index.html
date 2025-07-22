@@ -1316,86 +1316,38 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(registration => {
       console.log('ServiceWorker registration successful with scope: ', registration.scope);
-      // Check cache status on load
-      checkCacheStatus();
+      // Request status update as soon as the service worker is ready
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'GET_CACHE_STATUS' });
+      }
     }).catch(error => {
       console.log('ServiceWorker registration failed: ', error);
     });
   });
 
-  let allFiles = [];
-
   // Listen for messages from the service worker
   navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data.type === 'CHUNK_CACHED') {
-      updateCacheProgress(event.data.cached, event.data.total);
-      if (event.data.nextIndex < event.data.total) {
-        // Request next chunk
-        navigator.serviceWorker.controller.postMessage({
-          type: 'START_CACHE',
-          files: allFiles,
-          startIndex: event.data.nextIndex
-        });
-      } else {
-        // Caching complete
-        updateCacheProgress(event.data.total, event.data.total);
-      }
+    const { type, cached, total, isCaching } = event.data;
+    if (type === 'CACHE_PROGRESS' || type === 'CACHE_STATUS') {
+      updateCacheProgress(cached, total);
+    } else if (type === 'CACHE_COMPLETE') {
+      updateCacheProgress(cached, total);
+      alert('All files have been cached successfully!');
     }
   });
-}
-
-async function checkCacheStatus() {
-  if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
-    document.getElementById('cache-progress').style.display = 'none';
-    return;
-  }
-
-  try {
-    const cache = await caches.open('helm-v1');
-    const cachedRequests = await cache.keys();
-    const cachedUrls = cachedRequests.map(req => new URL(req.url).pathname);
-
-    const response = await fetch('file-list.json');
-    if (!response.ok) {
-        throw new Error('Failed to fetch file-list.json');
-    }
-    const fileList = await response.json();
-    allFiles = fileList; // Store for later use
-
-    document.getElementById('cache-progress').style.display = 'block';
-
-    updateCacheProgress(cachedUrls.length, fileList.length);
-  } catch (error) {
-    console.error("Could not check cache status:", error);
-    document.getElementById('cache-progress').style.display = 'none';
-  }
 }
 
 document.getElementById('cache-button').addEventListener('click', async () => {
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     try {
-      const cache = await caches.open('helm-v1');
-      const cachedRequests = await cache.keys();
-      const cachedUrls = new Set(cachedRequests.map(req => new URL(req.url).href));
-
       const response = await fetch('file-list.json');
       if (!response.ok) throw new Error('Failed to fetch file-list.json');
       const allFiles = await response.json();
 
-      const filesToCache = allFiles.filter(file => {
-        const fileUrl = new URL(file, window.location.href).href;
-        return !cachedUrls.has(fileUrl);
+      navigator.serviceWorker.controller.postMessage({
+        type: 'START_CACHE',
+        files: allFiles
       });
-
-      if (filesToCache.length > 0) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'START_CACHE',
-          files: filesToCache,
-          startIndex: 0
-        });
-      } else {
-        updateCacheProgress(allFiles.length, allFiles.length);
-      }
     } catch (error) {
       console.error("Could not start caching:", error);
     }
@@ -1404,10 +1356,14 @@ document.getElementById('cache-button').addEventListener('click', async () => {
 
 function updateCacheProgress(cachedCount, totalCount) {
   const progressText = document.getElementById('cache-progress-text');
+  const cacheProgress = document.getElementById('cache-progress');
   
   if (totalCount > 0) {
+    cacheProgress.style.display = 'block';
     const percentage = ((cachedCount / totalCount) * 100).toFixed(2);
     progressText.textContent = `Cached ${cachedCount} of ${totalCount} files (${percentage}%).`;
+  } else {
+    cacheProgress.style.display = 'none';
   }
 }
 
